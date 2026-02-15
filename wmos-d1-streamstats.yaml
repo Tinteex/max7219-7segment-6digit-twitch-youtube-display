@@ -1,0 +1,179 @@
+esphome:
+  name: wmos-d1-streamstats
+  friendly_name: WMOS D1 Streamstats
+
+esp8266:
+  board: d1_mini_lite
+
+logger:
+
+api:
+  encryption:
+    key: "your stuff here"
+
+ota:
+  - platform: esphome
+    password: "your stuff here"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Wmos-D1-Streamstats"
+    password: "your stuff here"
+
+captive_portal:
+
+mqtt:
+  broker: your  mqtt ip here
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  discovery: true
+
+  on_message:
+    # ---------------- YouTube ----------------
+    - topic: esp/youtube
+      then:
+        - lambda: |-
+            JsonDocument doc;
+            if (deserializeJson(doc, x.c_str())) return;
+
+            id(youtube_views) = doc["youtube"]["total_views"] | 0;
+            id(youtube_subs)  = doc["youtube"]["subs"] | 0;
+
+    # ---------------- Twitch ----------------
+    - topic: esp/twitch-followers
+      then:
+      - lambda: |-
+           // JSON-Dokument parsen
+           JsonDocument doc;
+           if (deserializeJson(doc, x.c_str())) return;
+
+           // Wert aus "twitch_followers" lesen
+           id(twitch_followers) = doc["twitch_followers"] | 0;
+
+
+    # Twitch Subs
+    - topic: esp/twitch-subs
+      then:
+        - lambda: |-
+             JsonDocument doc;
+             if (deserializeJson(doc, x.c_str())) return;
+             id(twitch_subs) = doc["twitch_subs"] | 0;
+
+globals:
+  # Eigentliche Werte
+  - id: youtube_views
+    type: long
+    restore_value: no
+    initial_value: '0'
+
+  - id: youtube_subs
+    type: long
+    restore_value: no
+    initial_value: '0'
+
+  - id: twitch_followers
+    type: long
+    restore_value: no
+    initial_value: '0'
+
+  - id: twitch_subs
+    type: long
+    restore_value: no
+    initial_value: '0'
+
+  # Letzte Werte
+  - id: last_youtube_views
+    type: long
+    restore_value: yes
+    initial_value: '0'
+
+  - id: last_youtube_subs
+    type: long
+    restore_value: yes
+    initial_value: '0'
+
+  - id: last_twitch_followers
+    type: long
+    restore_value: yes
+    initial_value: '0'
+
+  - id: last_twitch_subs
+    type: long
+    restore_value: yes
+    initial_value: '0'
+
+  # Blink-Counter für jedes Display
+  - id: blink_youtube_views
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: blink_youtube_subs
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: blink_twitch_followers
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: blink_twitch_subs
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+spi:
+  clk_pin: D5
+  mosi_pin: D7
+
+display:
+  - platform: max7219
+    cs_pin: D8
+    num_chips: 4
+    intensity: 1
+    update_interval: 0.1s   # schnelles Blinken
+    reverse_enable: true
+    lambda: |-
+      auto format_number = [](long value) -> std::string {
+        char raw[32];
+        snprintf(raw, sizeof(raw), "%8ld", value);
+        std::string formatted = "";
+        int len = strlen(raw);
+        int counter = 0;
+        for (int i = len - 1; i >= 0; i--) {
+          if (raw[i] == ' ') formatted = ' ' + formatted;
+          else {
+            formatted = raw[i] + formatted;
+            counter++;
+            if (counter == 3 && i != 0 && raw[i-1] != ' ') {
+              formatted = "." + formatted;
+              counter = 0;
+            }
+          }
+        }
+        return formatted;
+      };
+
+      auto display_value = [&](int offset, long value, long &last_value, int &blink_counter) {
+        if (value != last_value) {
+          blink_counter = 50;  // 5 Sekunden schnell blinken
+          last_value = value;
+        }
+        std::string s = format_number(value);
+
+        if (blink_counter > 0) {
+          if (blink_counter % 2 == 1) it.print(offset, "        "); // aus
+          else it.print(offset, s.c_str()); // an
+          blink_counter--;
+        } else {
+          it.print(offset, s.c_str()); // normal
+        }
+      };
+
+      display_value(0, id(youtube_views), id(last_youtube_views), id(blink_youtube_views));
+      display_value(8, id(youtube_subs), id(last_youtube_subs), id(blink_youtube_subs));
+      display_value(16, id(twitch_followers), id(last_twitch_followers), id(blink_twitch_followers));
+      display_value(24, id(twitch_subs), id(last_twitch_subs), id(blink_twitch_subs));
