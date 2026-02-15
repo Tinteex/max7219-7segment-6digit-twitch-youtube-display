@@ -8,6 +8,8 @@ i used esphome
 4x max7219 7 segment 6 digit display in chain.
 
 wiring.
+open readme in code so the formatting isnt poop
+
 
 on the WMOS D1:
 D1                          [ DISPLAY 1 ]        
